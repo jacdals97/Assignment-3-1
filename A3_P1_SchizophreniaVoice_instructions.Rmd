@@ -97,7 +97,9 @@ Only then (when everything works) turn the code into a function and use map_df()
 See placeholder code here for help.
 
 ```{r}
-library(tidyverse)
+library(pacman)
+
+p_load(tidyverse)
 
 read_pitch <- function(filename) {
     # load data
@@ -109,6 +111,39 @@ read_pitch <- function(filename) {
     # combine all this data in one dataset
     return(data)
 }
+
+
+
+
+
+
+
+
+My_f <- function(x){
+                        data.frame(Study = regmatches(x, gregexpr('Study[0-9]{1}', x))[[1]], #study
+                                  Diagnosis = regmatches(x, gregexpr('D[0-9]{1}', x))[[1]], #Diagnosis
+                                Subject = regmatches(x, gregexpr('S[0-9]{1,3}', x))[[1]], #Subject
+                                  Trial = regmatches(x, gregexpr('T[0-9]{1,2}', x))[[1]], #Trial
+                          mean = mean(read.delim(x)[,2]), #mean
+                          sd = sd(read.delim(x)[,2]), #sd
+                          IQR = IQR(read.delim(x)[,2]), #inner quartile range
+                          min = range(read.delim(files[1])[,2])[1], #min
+                          max = range(read.delim(files[1])[,2])[2]) #max
+                                  }
+
+l <- lapply(files, My_f)
+
+
+tbl <- l %>%  bind_rows()
+
+
+
+
+files <- list.files(path = "C:/Users/jacda/Desktop/Cognitive science/R-stuff/Class work 3/Assignment-3/Assignment-3-1/data/", pattern = "*.txt", full.names = T)
+
+
+df <- as.data.frame(dfList)
+dfList
 
 # test it on just one file while writing the function
 test_data = read_pitch("Pitch/a_file_to_test.txt")
