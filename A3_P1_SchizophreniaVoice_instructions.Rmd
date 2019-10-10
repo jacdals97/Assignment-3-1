@@ -99,7 +99,7 @@ See placeholder code here for help.
 ```{r}
 library(pacman)
 
-p_load(tidyverse)
+p_load(tidyverse, gtools)
 
 read_pitch <- function(filename) {
     # load data
@@ -114,10 +114,7 @@ read_pitch <- function(filename) {
 
 
 
-
-
-
-
+length(filter(tbl, tbl$Study == "Study1"))
 
 My_f <- function(x){
                         data.frame(Study = regmatches(x, gregexpr('Study[0-9]{1}', x))[[1]], #study
@@ -127,32 +124,33 @@ My_f <- function(x){
                           mean = mean(read.delim(x)[,2]), #mean
                           sd = sd(read.delim(x)[,2]), #sd
                           IQR = IQR(read.delim(x)[,2]), #inner quartile range
-                          min = range(read.delim(files[1])[,2])[1], #min
-                          max = range(read.delim(files[1])[,2])[2]) #max
+                          min = range(read.delim(x)[,2])[1], #min
+                          max = range(read.delim(x)[,2])[2], #max
+                          dur = range(read.delim(x)[,1])[2] - range(read.delim(x)[,1])[1]) #duration
                                   }
 
-l <- lapply(files, My_f)
-
-
-tbl <- l %>%  bind_rows()
 
 
 
 
 files <- list.files(path = "C:/Users/jacda/Desktop/Cognitive science/R-stuff/Class work 3/Assignment-3/Assignment-3-1/data/", pattern = "*.txt", full.names = T)
 
+l <- lapply(files, My_f)
 
-df <- as.data.frame(dfList)
-dfList
+tbl <- l %>%  bind_rows()
+
+write.csv(tbl, "pitchdata.csv", fileEncoding = "UTF-8")
+
+
 
 # test it on just one file while writing the function
 test_data = read_pitch("Pitch/a_file_to_test.txt")
 
 # when you've created a function that works, you can
-pitch_data = list.files(path = "Assignment3/data/Pitch/",pattern = ".txt") %>% ## NB replace with your path to the files
-    purrr::map_df(read_pitch)
+pitch_data = list.files(path = "C:/Users/jacda/Desktop/Cognitive science/R-stuff/Class work 3/Assignment-3/Assignment-3-1/data/" ,pattern = ".txt") %>% ## NB replace with your path to the files
+    purrr::map_df(My_f)
 
-write_csv(pitch_data, ...)
+write_csv(p, ...)
 
 ```
 
@@ -162,7 +160,24 @@ write_csv(pitch_data, ...)
 ```{r}
 # Let's start with the demographic and clinical data
 
+demo <- read.csv2("DemographicData.csv", encoding = "UTF-8")
+
+
+arti <- read.csv("Articulation.txt", encoding = "UTF-8", stringsAsFactors = F)
+
+art_sor <- df[order(df[,1], decreasing = F ),]
+
+
+
+
+
+tbl_art[,11:18] <- art_sor[,1:8]  
+
+
+
+
 # then duration data
+
 
 # Finally the pitch data
 
