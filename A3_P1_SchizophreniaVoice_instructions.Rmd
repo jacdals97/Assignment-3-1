@@ -126,7 +126,7 @@ My_f <- function(x){
                           IQR = IQR(read.delim(x)[,2]), #inner quartile range
                           min = range(read.delim(x)[,2])[1], #min
                           max = range(read.delim(x)[,2])[2], #max
-                          dur = range(read.delim(x)[,1])[2] - range(read.delim(x)[,1])[1]) #duration
+                          dur = range(read.delim(x)[,1])[2]) #duration
                                   }
 
 
@@ -143,14 +143,7 @@ write.csv(tbl, "pitchdata.csv", fileEncoding = "UTF-8")
 
 
 
-# test it on just one file while writing the function
-test_data = read_pitch("Pitch/a_file_to_test.txt")
 
-# when you've created a function that works, you can
-pitch_data = list.files(path = "C:/Users/jacda/Desktop/Cognitive science/R-stuff/Class work 3/Assignment-3/Assignment-3-1/data/" ,pattern = ".txt") %>% ## NB replace with your path to the files
-    purrr::map_df(My_f)
-
-write_csv(p, ...)
 
 ```
 
@@ -163,13 +156,21 @@ write_csv(p, ...)
 demo <- read.csv2("DemographicData.csv", encoding = "UTF-8")
 
 
+demo <- demo[1:386,]
+
+
+demo$Participant[demo$Study == 6] <- str_pad(demo$Participant[demo$Study == 6], width=3, side="left", pad="0")
+
+
+
 arti <- read.csv("Articulation.txt", encoding = "UTF-8", stringsAsFactors = F)
 
-art_sor <- df[order(df[,1], decreasing = F ),]
+
+art_sor <- arti[order(arti[,1], decreasing = F ),]
 
 
 
-
+tbl_art <- tbl
 
 tbl_art[,11:18] <- art_sor[,1:8]  
 
