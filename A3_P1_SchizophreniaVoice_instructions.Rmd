@@ -99,23 +99,11 @@ See placeholder code here for help.
 ```{r}
 library(pacman)
 
-p_load(tidyverse, gtools)
-
-read_pitch <- function(filename) {
-    # load data
-    
-    # parse filename to extract study, diagnosis, subject and trial
-    
-    # extract pitch descriptors (mean, sd, iqr, etc)
-    
-    # combine all this data in one dataset
-    return(data)
-}
+p_load(tidyverse, gtools, lme4, esc, lmerTest) #load packages
 
 
 
-length(filter(tbl, tbl$Study == "Study1"))
-
+#define function to read filenames and extract pitch data
 My_f <- function(x){
                         data.frame(Study = regmatches(x, gregexpr('Study[0-9]{1}', x))[[1]], #study
                                   Diagnosis = regmatches(x, gregexpr('D[0-9]{1}', x))[[1]], #Diagnosis
@@ -132,18 +120,17 @@ My_f <- function(x){
 
 
 
+#listing files
+files <- list.files(path = "C:/Users/jacda/Desktop/Cognitive science/R-stuff/Class work 3/Assignment-3/Assignment-3-1/data/", pattern = "*.txt", full.names = T) 
 
-files <- list.files(path = "C:/Users/jacda/Desktop/Cognitive science/R-stuff/Class work 3/Assignment-3/Assignment-3-1/data/", pattern = "*.txt", full.names = T)
-
+#applying function the file list
 l <- lapply(files, My_f)
 
+#binding observations into data.frame
 tbl <- l %>%  bind_rows()
 
+
 write.csv(tbl, "pitchdata.csv", fileEncoding = "UTF-8")
-
-
-
-
 
 ```
 
@@ -151,42 +138,60 @@ write.csv(tbl, "pitchdata.csv", fileEncoding = "UTF-8")
 ### Now you need to merge demographic/clinical, duration and pitch data
 
 ```{r}
-# Let's start with the demographic and clinical data
+#reading demographic data
 
-demo <- read.csv2("DemographicData.csv", encoding = "UTF-8")
+demo <- read.csv("DemographicData2.csv", encoding = "UTF-8")
 
-
-demo <- demo[1:386,]
-
-
+#padding participants IDs with 0s to match participant IDs in pitch data
 demo$Participant[demo$Study == 6] <- str_pad(demo$Participant[demo$Study == 6], width=3, side="left", pad="0")
+demo$Participant[demo$Study == 7] <- str_pad(demo$Participant[demo$Study == 7], width=2, side="left", pad="0")
 
 
-
+#reading duration data
 arti <- read.csv("Articulation.txt", encoding = "UTF-8", stringsAsFactors = F)
 
-
+#sorting duration data according to soundname (ID) column to match with pitch data
 art_sor <- arti[order(arti[,1], decreasing = F ),]
 
 
-
-tbl_art <- tbl
-
-tbl_art[,11:18] <- art_sor[,1:8]  
-
+#combining pitch data and duration data
+pitch <- tbl
+pitch[,11:18] <- art_sor[,1:8]  
 
 
 
-# then duration data
+demo$Study <- paste0("Study", demo$Study) #matching study variable in demographic data with pitch data
+demo$Participant <- paste0("S", demo$Participant) #matching participant variable in demographic data with pitch data
+demo$Diagnosis <- ifelse(demo$Diagnosis == "Control", "D0", "D1") #matching diagnosis variable in demographic data with pitch data
+demo$ID <- paste0(demo$Study, demo$Diagnosis, demo$Participant) #creating unique ID variable in demographic data for merging
 
 
-# Finally the pitch data
-
-# Now we merge them
-
-# Now we save them
+pitch$ID <- paste0(pitch$Study, pitch$Diagnosis, pitch$Subject)#creating unique ID variable in pitch data for merging
+pitch$TID <- paste0(pitch$ID, pitch$Trial) #creating unique Trial variable in pitch data
 
 ```
+
+Some of the duration data from study 7 is not easily combined however we have chosen to include it
+
+Executing the following lines lets you expect the weird ID variables
+
+gone <- which(!pitch$soundname %in% pitch$TID)
+
+pitch[gone,]
+
+```{r}
+
+merged2 <- merge(demo, pitch, by ="ID") #merging data by the unique ID variable 
+#8 observations disappear
+
+#these are the 8 observations
+pitch[which(!pitch$ID %in% demo$ID),]
+
+
+#writing the final data frame
+write.csv(merged_data, "merged_data.csv", fileEncoding = "UTF-8")
+```
+
 
 ## Now we need to describe our sample
 
@@ -197,6 +202,31 @@ I like to use group_by() %>% summarize() for quick summaries
 
 ```{r}
 
+#Participants by diagnosis
+merged2 %>% group_by(Diagnosis.x) %>% summarise(length(unique(ID)))
+
+
+#Summarised by Gender
+merged %>% group_by(Gender,Diagnosis.x) %>%
+    summarise(Participants=length(unique(ID)), #participants
+              Mean_Age=mean(Age,na.rm=TRUE), #age
+              Mean_VIQ=mean(VerbalIQ,na.rm=TRUE), #mean verbal IQ
+              SD_VIQ=sd(VerbalIQ,na.rm=TRUE), #sd verbal IQ
+              Mean_SANS=mean(as.numeric(SANS), na.rm=TRUE), #mean SANS
+              SD_SANS=sd(as.numeric(SANS),na.rm=TRUE), #sd  SANS
+              Mean_Saps=mean(as.numeric(SAPS),na.rm=TRUE), #mean SAPS
+              SD_SAPS=sd(as.numeric(SAPS),na.rm=TRUE)) #sd SAPS
+
+#Summarised by study
+merged %>% group_by(Study.x,Diagnosis.x) %>%
+    summarise(Participants=length(unique(ID)), #participants
+              Mean_Age=mean(Age,na.rm=TRUE), #age
+              Mean_VIQ=mean(VerbalIQ,na.rm=TRUE), #mean verbal IQ
+              SD_VIQ=sd(VerbalIQ,na.rm=TRUE), #sd verbal IQ
+              Mean_SANS=mean(as.numeric(SANS), na.rm=TRUE), #mean SANS
+              SD_SANS=sd(as.numeric(SANS),na.rm=TRUE), #sd  SANS
+              Mean_Saps=mean(as.numeric(SAPS),na.rm=TRUE), #mean SAPS
+              SD_SAPS=sd(as.numeric(SAPS),na.rm=TRUE)) #sd SAPS
 ```
 
 ## Now we can analyze the data
@@ -216,6 +246,86 @@ N.N.N.B. If you want to estimate the studies separately, you can try this syntax
 - Bonus points: cross-validate the models and report the betas and standard errors from all rounds to get an idea of how robust the estimates are. 
 
 ```{r}
+
+merged <- merged_data[,c(1:14, 18:33)] #selecting variables for modelling
+
+
+#Time to scale variables
+merged$pause_dur <- as.numeric(((merged$dur..s.- merged$phonationtime..s.)/merged$npause)) #pause duration
+merged$pause_dur[merged$npause == 0] <- NA #set observations with no pauses to NA
+
+#scaling variables by language as to remove variability expressed by language
+merged <- merged %>%
+    group_by(Language) %>%
+    mutate(scaled_IQR = as.numeric(scale(IQR)), 
+                  scaled_speak_time = as.numeric(scale(phonationtime..s.)),
+                  scaled_speech_rate = as.numeric(scale(speechrate..nsyll.dur.)),
+                  scaled_pause_dur = as.numeric(scale(scaled_pause_dur)))
+
+
+
+merged$Study.x <- as.factor(merged$Study.x)
+merged$ID <- as.factor(merged$ID)
+merged$Trial <- as.factor(merged$Trial)
+merged$Diagnosis.x <- as.factor(merged$Diagnosis.x)
+merged$Language <- as.factor(merged$Language)
+
+
+#modelling IQR
+model_IQR <- lmer(scaled_IQR ~ 1 + Diagnosis.x + (1|ID) + (1|Study.x), data = merged, REML = F,  control = lmerControl(
+  optimizer = "nloptwrap",
+  calc.derivs = F,
+  optCtrl = list(
+    ftol_abs = 1e-10,
+    xtol_abs = 1e-10,
+    maxeval = 10000
+  )))
+
+sum_IQR <- summary(model_IQR)
+sum_IQR
+model_IQR <- as_lmerModLmerTest(model_IQR)
+anova(model_IQR)
+hedges_g(sum_IQR$coefficients[2,1], totaln = 3998)
+
+model_speak_time <- lmer(scaled_speak_time ~ 1 + Diagnosis.x + (1|ID), data = merged, REML = F,  control = lmerControl(
+  optimizer = "nloptwrap",
+  calc.derivs = F,
+  optCtrl = list(
+    ftol_abs = 1e-10,
+    xtol_abs = 1e-10,
+    maxeval = 10000
+  )))
+
+sum_speak_time<- summary(model_speak_time)
+sum_speak_time
+hedges_g(sum_speak_time$coefficients[2,1], totaln = 3998)
+
+model_speech_rate <- lmer(scaled_speech_rate ~ 1 + Diagnosis.x + (1|ID), data = merged, REML = F,  control = lmerControl(
+  optimizer = "nloptwrap",
+  calc.derivs = F,
+  optCtrl = list(
+    ftol_abs = 1e-10,
+    xtol_abs = 1e-10,
+    maxeval = 10000
+  )))
+
+sum_speech_rate <- summary(model_speech_rate)
+sum_speech_rate
+hedges_g(sum_speech_rate$coefficients[2,1], totaln = 3998)
+
+model_pause_dur <- lmer(scaled_pause_dur ~ 1 + Diagnosis.x + (1|ID), data = merged, REML = F,  control = lmerControl(
+  optimizer = "nloptwrap",
+  calc.derivs = F,
+  optCtrl = list(
+    ftol_abs = 1e-10,
+    xtol_abs = 1e-10,
+    maxeval = 10000
+  )))
+
+sum_pause_dur <- summary(model_pause_dur)
+sum_pause_dur
+hedges_g(sum_pause_dur$coefficients[2,1], totaln = 3998)
+
 
 ```
 
