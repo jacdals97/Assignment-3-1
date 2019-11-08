@@ -1,8 +1,10 @@
 ---
 title: "Assignment 3 - Part 1 - Voice In Schizophrenia"
-author: "Riccardo Fusaroli"
-date: "August 09, 2019"
-output: html_document
+author: "Study group 12"
+date: "November 08, 2019"
+output: 
+  md_document:
+    variant: markdown_github
 ---
 
 ```{r setup, include=FALSE}
@@ -99,8 +101,7 @@ See placeholder code here for help.
 ```{r}
 library(pacman)
 
-p_load(tidyverse, gtools, lme4, esc, lmerTest) #load packages
-
+p_load(tidyverse, lme4, groupdata2, MuMIn, Metrics) #load packages
 
 
 #define function to read filenames and extract pitch data
@@ -181,7 +182,7 @@ pitch[gone,]
 
 ```{r}
 
-merged2 <- merge(demo, pitch, by ="ID") #merging data by the unique ID variable 
+merged <- merge(demo, pitch, by ="ID") #merging data by the unique ID variable 
 #8 observations disappear
 
 #these are the 8 observations
@@ -203,7 +204,7 @@ I like to use group_by() %>% summarize() for quick summaries
 ```{r}
 
 #Participants by diagnosis
-merged2 %>% group_by(Diagnosis.x) %>% summarise(length(unique(ID)))
+merged %>% group_by(Diagnosis.x) %>% summarise(length(unique(ID)))
 
 
 #Summarised by Gender
@@ -246,29 +247,27 @@ N.N.N.B. If you want to estimate the studies separately, you can try this syntax
 - Bonus points: cross-validate the models and report the betas and standard errors from all rounds to get an idea of how robust the estimates are. 
 
 ```{r}
+set.seed(1)
+
 
 merged <- merged_data[,c(1:14, 18:33)] #selecting variables for modelling
 
 
-#Time to scale variables
-merged$pause_dur <- as.numeric(((merged$dur..s.- merged$phonationtime..s.)/merged$npause)) #pause duration
-merged$pause_dur[merged$npause == 0] <- NA #set observations with no pauses to NA
 
+merged$pause_dur <- as.numeric(((merged$dur..s.- merged$phonationtime..s.)/merged$npause)) #pause duration
+merged$pause_dur[merged$npause == 0] <- 0 #set observations with no pauses to 0
+
+
+#Time to scale variables
 #scaling variables by language as to remove variability expressed by language
 merged <- merged %>%
     group_by(Language) %>%
     mutate(scaled_IQR = as.numeric(scale(IQR)), 
                   scaled_speak_time = as.numeric(scale(phonationtime..s.)),
                   scaled_speech_rate = as.numeric(scale(speechrate..nsyll.dur.)),
-                  scaled_pause_dur = as.numeric(scale(scaled_pause_dur)))
+                  scaled_pause_dur = as.numeric(scale(pause_dur)))
 
 
-
-merged$Study.x <- as.factor(merged$Study.x)
-merged$ID <- as.factor(merged$ID)
-merged$Trial <- as.factor(merged$Trial)
-merged$Diagnosis.x <- as.factor(merged$Diagnosis.x)
-merged$Language <- as.factor(merged$Language)
 
 
 #modelling IQR
@@ -281,13 +280,49 @@ model_IQR <- lmer(scaled_IQR ~ 1 + Diagnosis.x + (1|ID) + (1|Study.x), data = me
     maxeval = 10000
   )))
 
+#summary model_IQR
 sum_IQR <- summary(model_IQR)
 sum_IQR
-model_IQR <- as_lmerModLmerTest(model_IQR)
-anova(model_IQR)
-hedges_g(sum_IQR$coefficients[2,1], totaln = 3998)
+hedges_g(sum_IQR$coefficients[2,1], totaln = 3998) #hedges g
 
-model_speak_time <- lmer(scaled_speak_time ~ 1 + Diagnosis.x + (1|ID), data = merged, REML = F,  control = lmerControl(
+
+#k-fold cross-validate modelIQR with balanced groups
+
+#Write function for later use
+K_fold <- function(model, k_fold, data, feature){ #takes arguments for which model to use, how many folds, what data and which feature to test
+  result2 <- data.frame()
+for (n in 2:k_fold){
+  result <- c()
+  folds1 <- fold(data, n, cat_col = "Diagnosis.x", id_col = "ID")
+  for (i in unique(folds1[[".folds"]])){
+  test <- subset(folds1, .folds == i)
+  train <- subset(folds1, .folds != i)
+  mod <- model
+  result[i] <- rmse(test[,feature == colnames(test)][[1]], predict(mod,test, allow.new.levels = T))}
+  result2[n,1] <- mean(result)
+  colnames(result2)[1] <-"mean_RMSE" 
+  result2[n,2] <- n
+  colnames(result2)[2] <-"k_folds" 
+  result2[n,3] <- feature
+  colnames(result2)[3] <-"feature" 
+}
+  result2
+}
+
+
+
+#Using function
+res_IQR <- K_fold(model_IQR, 163, merged, "scaled_IQR")
+
+
+
+#Displaying the lowest RMSE and the corresponding number of folds
+head(res_IQR[order(res_IQR[,1], decreasing = F ),])
+
+
+
+#modelling speak time
+model_speak_time <- lmer(scaled_speak_time ~ 1 + Diagnosis.x + (1|ID) + (1|Study.x), data = merged, REML = F,  control = lmerControl(
   optimizer = "nloptwrap",
   calc.derivs = F,
   optCtrl = list(
@@ -296,11 +331,22 @@ model_speak_time <- lmer(scaled_speak_time ~ 1 + Diagnosis.x + (1|ID), data = me
     maxeval = 10000
   )))
 
+#summary model_speak_time
 sum_speak_time<- summary(model_speak_time)
 sum_speak_time
-hedges_g(sum_speak_time$coefficients[2,1], totaln = 3998)
+hedges_g(sum_speak_time$coefficients[2,1], totaln = 3998) #hedges g
 
-model_speech_rate <- lmer(scaled_speech_rate ~ 1 + Diagnosis.x + (1|ID), data = merged, REML = F,  control = lmerControl(
+#k-fold cross-validate model speak time with balanced groups
+res_speak_time <- K_fold(model_speak_time, 163, merged, "scaled_speak_time")
+
+
+#Displaying the lowest RMSE and the corresponding number of folds
+head(res_speak_time[order(res_speak_time[,1], decreasing = F ),])
+
+
+
+#modelling speech rate
+model_speech_rate <- lmer(scaled_speech_rate ~ 1 + Diagnosis.x + (1|ID) + (1|Study.x), data = merged, REML = F,  control = lmerControl(
   optimizer = "nloptwrap",
   calc.derivs = F,
   optCtrl = list(
@@ -309,11 +355,21 @@ model_speech_rate <- lmer(scaled_speech_rate ~ 1 + Diagnosis.x + (1|ID), data = 
     maxeval = 10000
   )))
 
+#summary model_speech_rate
 sum_speech_rate <- summary(model_speech_rate)
 sum_speech_rate
-hedges_g(sum_speech_rate$coefficients[2,1], totaln = 3998)
+hedges_g(sum_speech_rate$coefficients[2,1], totaln = 3998) #hedges g
 
-model_pause_dur <- lmer(scaled_pause_dur ~ 1 + Diagnosis.x + (1|ID), data = merged, REML = F,  control = lmerControl(
+
+#k-fold cross-validate model speech rate with balanced groups
+res_speech_rate <- K_fold(model_speech_rate, 163, merged, "scaled_speech_rate")
+
+
+#Displaying the lowest RMSE and the corresponding number of folds
+head(res_speech_rate[order(res_speech_rate[,1], decreasing = F ),])
+
+#modelling pause duration
+model_pause_dur <- lmer(scaled_pause_dur ~ 1 + Diagnosis.x + (1|ID) + (1|Study.x), data = merged, REML = F,  control = lmerControl(
   optimizer = "nloptwrap",
   calc.derivs = F,
   optCtrl = list(
@@ -322,10 +378,83 @@ model_pause_dur <- lmer(scaled_pause_dur ~ 1 + Diagnosis.x + (1|ID), data = merg
     maxeval = 10000
   )))
 
+#summary model_pause_duration
 sum_pause_dur <- summary(model_pause_dur)
 sum_pause_dur
-hedges_g(sum_pause_dur$coefficients[2,1], totaln = 3998)
+hedges_g(sum_pause_dur$coefficients[2,1], totaln = 3998) #hedges g
 
+#k-fold cross-validate model pause duration with balanced groups
+
+#Exluding missing data
+merged2 <- merged[complete.cases(merged$scaled_pause_dur),]
+
+res_IQR <- K_fold(model_pause_dur, 163, merged2, "scaled_pause_dur")
+
+
+#Displaying the lowest RMSE and the corresponding number of folds
+head(res_pause_dur[order(res_pause_dur[,1], decreasing = F ),])
+
+
+
+#Combining all result data frames into a single data frame
+res_frame<- rbind(res_IQR, res_speech_rate, res_speak_time, res_pause_dur)
+
+#Plotting each models root mean squared error as a function of number folds used in cross-validation
+ggplot(res_frame, aes(result2, fold, colour = feature))+
+  geom_point()+
+  ggtitle("K-fold crossvalidaton of scaled features with balanced groups")+
+  xlab("mean RMSE")+
+  ylab("Number of folds")
+
+
+
+#Writing data to be used in part 2
+write.csv(merged, "schizo_data.csv")
+```
+
+```{r}
+
+#Model selection based on AICc using dredge
+
+
+#Random effects model
+#na action needs to be set to omit otherwise model will not fit
+options(na.action = "na.omit")
+
+#Defining global random effects model
+glob_rf_mod <- glmer(Diagnosis.x ~ 1 + scaled_IQR + scaled_pause_dur + scaled_speak_time + scaled_speech_rate + (1|ID) + (1|Study.x), data = merged, family = binomial, REML = F,  control = glmerControl(
+  optimizer = "nloptwrap",
+  calc.derivs = F,
+  optCtrl = list(
+    ftol_abs = 1e-10,
+    xtol_abs = 1e-10,
+    maxeval = 10000
+  )))
+
+#Needs to be set to fail otherwise dredge won't work
+options(na.action = "na.fail")
+
+best_rf_model <- MuMIn::dredge(glob_rf_mod)
+
+#Data frame with all possible model combination and their estimates
+best_rf_model
+
+
+
+
+#Model without random effetcs
+#na action needs to be set to omit otherwise model will not fit
+options(na.action = "na.omit")
+
+#Defining global model
+glob_mod <- glm(Diagnosis.x ~ 1 + scaled_IQR + scaled_pause_dur + scaled_speak_time + scaled_speech_rate, data = merged, family = binomial)
+
+options(na.action = "na.fail")
+
+best_model <- MuMIn::dredge(glob_mod)
+
+#Data frame with all possible model combination and their estimates
+best_model
 
 ```
 
